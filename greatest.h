@@ -178,7 +178,7 @@ typedef struct greatest_run_info {
     unsigned int debug_mode;
     unsigned int debug_level;
     unsigned int debug_level_mask;
-    unsigned int debug_category_mask;
+    unsigned int debug_component_mask;
     char *debug_filename;
     char *debug_filemode;
 
@@ -637,7 +637,7 @@ greatest_run_info greatest_info
                     greatest_usage(argv[0]);                            \
                     exit(EXIT_FAILURE);                                 \
                 }                                                       \
-                greatest_info.debug_category_mask = atoi(argv[i+1]);    \
+                greatest_info.debug_component_mask = atoi(argv[i+1]);   \
                 i++;                                                    \
             } else if (0 == strcmp("-dfile", argv[i])) {                \
                 if (argc <= i + 1) {                                    \
