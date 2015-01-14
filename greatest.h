@@ -174,6 +174,14 @@ typedef struct greatest_run_info {
     char *gopro_test_user;
     char *gopro_test_pass;
 
+    /* GoPro debugging / logging */
+    unsigned int debug_mode;
+    unsigned int debug_level;
+    unsigned int debug_level_mask;
+    unsigned int debug_category_mask;
+    char *debug_filename;
+    char *debug_filemode;
+
     /* overall timers */
     clock_t begin;
     clock_t end;
@@ -305,9 +313,9 @@ void GREATEST_SET_TEARDOWN_CB(greatest_teardown_cb *cb, void *udata);
         greatest_info.fail_line = __LINE__;                             \
         if (0 != strcmp(exp_s, got_s)) {                                \
             fprintf(GREATEST_STDOUT,                                    \
-                "Expected:(%s)\n", exp_s);                  \
+                "Expected:(%s)\n", exp_s);                              \
             fprintf(GREATEST_STDOUT,                                    \
-                "Got:     (%s)\n", got_s);                       \
+                "Got:     (%s)\n", got_s);                              \
             return -1;                                                  \
         }                                                               \
         greatest_info.msg = NULL;                                       \
@@ -342,10 +350,10 @@ void GREATEST_SET_TEARDOWN_CB(greatest_teardown_cb *cb, void *udata);
     }
 
 #define GREATEST_CLOCK_DIFF(C1, C2)                                     \
-    fprintf(GREATEST_STDOUT, " (%.3f s)",                  \
+    fprintf(GREATEST_STDOUT, " (%.3f s)",                               \
         (double)((C2) - (C1)) / (1.0 * (double)CLOCKS_PER_SEC))         \
 
-#define GREATEST_CLOCK_DIFF_ORIGINAL(C1, C2)                                     \
+#define GREATEST_CLOCK_DIFF_ORIGINAL(C1, C2)                            \
     fprintf(GREATEST_STDOUT, " (%lu ticks, %.3f sec)",                  \
         (long unsigned int) (C2) - (C1),                                \
         (double)((C2) - (C1)) / (1.0 * (double)CLOCKS_PER_SEC))         \
@@ -376,7 +384,7 @@ int greatest_pre_test(const char *name) {                               \
         && (greatest_info.test_filter == NULL ||                        \
             greatest_name_match(name, greatest_info.test_filter))) {    \
         if (GREATEST_IS_VERBOSE()) {                                    \
-            fprintf(GREATEST_STDOUT, "TEST %30s ... ", name);             \
+            fprintf(GREATEST_STDOUT, "TEST %30s ... ", name);           \
         }                                                               \
         GREATEST_SET_TIME(greatest_info.suite.pre_test);                \
         if (greatest_info.setup) {                                      \
@@ -459,7 +467,7 @@ static void greatest_run_suite(greatest_suite_cb *suite_cb,             \
                                                                         \
 void greatest_do_pass(const char *name) {                               \
     if (GREATEST_IS_VERBOSE()) {                                        \
-        fprintf(GREATEST_STDOUT, "PASS %s ",                             \
+        fprintf(GREATEST_STDOUT, "PASS %s ",                            \
             greatest_info.msg ? greatest_info.msg : "");                \
     } else {                                                            \
         fprintf(GREATEST_STDOUT, ".");                                  \
@@ -470,7 +478,7 @@ void greatest_do_pass(const char *name) {                               \
 void greatest_do_fail(const char *name) {                               \
     if (GREATEST_IS_VERBOSE()) {                                        \
         fprintf(GREATEST_STDOUT,                                        \
-            "FAIL %s: %s (%s:%u)\n",                                      \
+            "FAIL %s: %s (%s:%u)\n",                                    \
             name, greatest_info.msg ? greatest_info.msg : "",           \
             greatest_info.fail_file, greatest_info.fail_line);          \
     } else {                                                            \
@@ -479,7 +487,7 @@ void greatest_do_fail(const char *name) {                               \
         if (greatest_info.col % greatest_info.width != 0)               \
             fprintf(GREATEST_STDOUT, "\n");                             \
         greatest_info.col = 0;                                          \
-        fprintf(GREATEST_STDOUT, "FAIL %s: %s (%s:%u) ",               \
+        fprintf(GREATEST_STDOUT, "FAIL %s: %s (%s:%u) ",                \
             name,                                                       \
             greatest_info.msg ? greatest_info.msg : "",                 \
             greatest_info.fail_file, greatest_info.fail_line);          \
@@ -507,10 +515,15 @@ void greatest_usage(const char *name) {                                 \
         "  -f        Stop runner after first failure\n"                 \
         "  -v        Verbose output\n"                                  \
         "  -s SUITE  only run suite named SUITE\n"                      \
-        "  -t TEST   only run test named TEST\n"                       \
+        "  -t TEST   only run test named TEST\n"                        \
         "  -j SERVER Jakarta server to hit prod/staging/qa DEFAULT: qa\n" \
-        "  -u USER   Jakarta user to use DEFAULT: kfry@gopro.com\n"         \
-        "  -p PASS   Jakarta password to use DEFAULT: [xxxxx]\n",         \
+        "  -u USER   Jakarta user to use DEFAULT: kfry@gopro.com\n"     \
+        "  -p PASS   Jakarta password to use DEFAULT: [xxxxx]\n"        \
+        "  -dmode   MODE  debug mode (stdout|stderr|file)\n"            \
+        "  -dmask   MASK  debug mode (stdout|stderr|file)\n"            \
+        "  -dcat    CAT   debug category (bitfield)\n"                  \
+        "  -dfile   FILE  debug filename\n"                             \
+        "  -dappend FILE  debug filename (append to existing)\n",       \
         name);                                                          \
 }                                                                       \
                                                                         \
@@ -533,6 +546,7 @@ greatest_run_info greatest_info
     do {                                                                \
         int i = 0;                                                      \
         memset(&greatest_info, 0, sizeof(greatest_info));               \
+        greatest_info.debug_mode = 1;                                   \
         if (greatest_info.width == 0) {                                 \
             greatest_info.width = GREATEST_DEFAULT_WIDTH;               \
         }                                                               \
@@ -558,9 +572,9 @@ greatest_run_info greatest_info
                 }                                                       \
                 if(strcmp(argv[i+1], "qa") == 0)                        \
                     greatest_info.gopro_test_server = 0;                \
-                else if(strcmp(argv[i+1], "staging") == 0)             \
+                else if(strcmp(argv[i+1], "staging") == 0)              \
                     greatest_info.gopro_test_server = 1;                \
-                else if(strcmp(argv[i+1], "prod") == 0)                \
+                else if(strcmp(argv[i+1], "prod") == 0)                 \
                     greatest_info.gopro_test_server = 2;                \
                 else {                                                  \
                     greatest_usage(argv[0]);                            \
@@ -590,6 +604,57 @@ greatest_run_info greatest_info
             } else if (0 == strcmp("-h", argv[i])) {                    \
                 greatest_usage(argv[0]);                                \
                 exit(EXIT_SUCCESS);                                     \
+            } else if (0 == strcmp("-dmode", argv[i])) {                \
+                int mode = 0;                                           \
+                if (argc <= i + 1) {                                    \
+                    greatest_usage(argv[0]);                            \
+                    exit(EXIT_FAILURE);                                 \
+                }                                                       \
+                if (strstr(argv[i+1], "stdout") != NULL)                \
+                    mode |= 1;                                          \
+                if (strstr(argv[i+1], "stderr") != NULL)                \
+                    mode |= 2;                                          \
+                if (strstr(argv[i+1], "file") != NULL)                  \
+                    mode |= 4;                                          \
+                greatest_info.debug_mode = mode;                        \
+                i++;                                                    \
+            } else if (0 == strcmp("-dlevel", argv[i])) {               \
+                if (argc <= i + 1) {                                    \
+                    greatest_usage(argv[0]);                            \
+                    exit(EXIT_FAILURE);                                 \
+                }                                                       \
+                greatest_info.debug_level = atoi(argv[i+1]);            \
+                i++;                                                    \
+            } else if (0 == strcmp("-dmask", argv[i])) {                \
+                if (argc <= i + 1) {                                    \
+                    greatest_usage(argv[0]);                            \
+                    exit(EXIT_FAILURE);                                 \
+                }                                                       \
+                greatest_info.debug_level_mask = atoi(argv[i+1]);       \
+                i++;                                                    \
+            } else if (0 == strcmp("-dcat", argv[i])) {                 \
+                if (argc <= i + 1) {                                    \
+                    greatest_usage(argv[0]);                            \
+                    exit(EXIT_FAILURE);                                 \
+                }                                                       \
+                greatest_info.debug_category_mask = atoi(argv[i+1]);    \
+                i++;                                                    \
+            } else if (0 == strcmp("-dfile", argv[i])) {                \
+                if (argc <= i + 1) {                                    \
+                    greatest_usage(argv[0]);                            \
+                    exit(EXIT_FAILURE);                                 \
+                }                                                       \
+                greatest_info.debug_filename = argv[i+1];               \
+                greatest_info.debug_filemode = "w";                     \
+                i++;                                                    \
+            } else if (0 == strcmp("-dappend", argv[i])) {              \
+                if (argc <= i + 1) {                                    \
+                    greatest_usage(argv[0]);                            \
+                    exit(EXIT_FAILURE);                                 \
+                }                                                       \
+                greatest_info.debug_filename = argv[i+1];               \
+                greatest_info.debug_filemode = "a";                     \
+                i++;                                                    \
             } else {                                                    \
                 fprintf(GREATEST_STDOUT,                                \
                     "Unknown argument '%s'\n", argv[i]);                \
