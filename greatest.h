@@ -521,7 +521,7 @@ void greatest_usage(const char *name) {                                 \
         "  -p PASS   Jakarta password to use DEFAULT: [xxxxx]\n"        \
         "  -dmode   MODE  debug mode (stdout|stderr|file)\n"            \
         "  -dmask   MASK  debug mode (stdout|stderr|file)\n"            \
-        "  -dcat    CAT   debug category (bitfield)\n"                  \
+        "  -dcomp   COMP  debug component (bitfield)\n"                  \
         "  -dfile   FILE  debug filename\n"                             \
         "  -dappend FILE  debug filename (append to existing)\n",       \
         name);                                                          \
@@ -632,7 +632,7 @@ greatest_run_info greatest_info
                 }                                                       \
                 greatest_info.debug_level_mask = atoi(argv[i+1]);       \
                 i++;                                                    \
-            } else if (0 == strcmp("-dcat", argv[i])) {                 \
+            } else if (0 == strcmp("-dcomp", argv[i])) {                \
                 if (argc <= i + 1) {                                    \
                     greatest_usage(argv[0]);                            \
                     exit(EXIT_FAILURE);                                 \
