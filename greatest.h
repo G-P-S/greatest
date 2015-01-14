@@ -19,7 +19,7 @@
 
 #define GREATEST_VERSION_MAJOR 0
 #define GREATEST_VERSION_MINOR 9
-#define GREATEST_VERSION_PATCH 4
+#define GREATEST_VERSION_PATCH 3
 
 /* A unit testing system for C, contained in 1 file.
  * It doesn't use dynamic allocation or depend on anything
@@ -93,6 +93,14 @@ int main(int argc, char **argv) {
 #define GREATEST_USE_ABBREVS 1
 #endif
 
+/* Default column width for non-verbose output. */
+#ifndef GREATEST_MAX_SUITE_ERRORS
+#define GREATEST_MAX_SUITE_ERRORS 256
+#endif
+#ifndef GREATEST_MAX_SUITE_NAME_LEN
+#define GREATEST_MAX_SUITE_NAME_LEN 256
+#endif
+
 
 /*********
  * Types *
@@ -134,7 +142,9 @@ typedef struct greatest_run_info {
     unsigned int passed;
     unsigned int failed;
     unsigned int skipped;
-    unsigned int assertions;
+
+    char failed_list[GREATEST_MAX_SUITE_ERRORS][GREATEST_MAX_SUITE_NAME_LEN];
+    int failed_list_count;
 
     /* currently running test suite */
     greatest_suite_info suite;
@@ -157,6 +167,12 @@ typedef struct greatest_run_info {
     /* only run a specific suite or test */
     char *suite_filter;
     char *test_filter;
+
+    /* GoPro connect to specific server (prod/qa/staging) */
+    int gopro_test_server;
+    /* GoPro specify test account */
+    char *gopro_test_user;
+    char *gopro_test_pass;
 
     /* overall timers */
     clock_t begin;
@@ -258,8 +274,7 @@ void GREATEST_SET_TEARDOWN_CB(greatest_teardown_cb *cb, void *udata);
         greatest_info.msg = MSG;                                        \
         greatest_info.fail_file = __FILE__;                             \
         greatest_info.fail_line = __LINE__;                             \
-        greatest_info.assertions++;                                     \
-        if (!(COND)) { return -1; }                                     \
+        if (!(COND)) return -1;                                         \
         greatest_info.msg = NULL;                                       \
     } while (0)
 
@@ -268,8 +283,7 @@ void GREATEST_SET_TEARDOWN_CB(greatest_teardown_cb *cb, void *udata);
         greatest_info.msg = MSG;                                        \
         greatest_info.fail_file = __FILE__;                             \
         greatest_info.fail_line = __LINE__;                             \
-        greatest_info.assertions++;                                     \
-        if ((COND)) { return -1; }                                      \
+        if ((COND)) return -1;                                          \
         greatest_info.msg = NULL;                                       \
     } while (0)
 
@@ -278,21 +292,10 @@ void GREATEST_SET_TEARDOWN_CB(greatest_teardown_cb *cb, void *udata);
         greatest_info.msg = MSG;                                        \
         greatest_info.fail_file = __FILE__;                             \
         greatest_info.fail_line = __LINE__;                             \
-        greatest_info.assertions++;                                     \
-        if ((EXP) != (GOT)) { return -1; }                              \
+        if ((EXP) != (GOT)) return -1;                                  \
         greatest_info.msg = NULL;                                       \
     } while (0)
 
-#define GREATEST_ASSERT_EQ_CB(A, B, CMP_CB, PRINT_CB)                   \
-    do {                                                                \
-        if (0 != CMP_CB(A, B)) {                                        \
-            if (GREATEST_IS_VERBOSE()) {                                \
-                PRINT_CB(GREATEST_STDOUT, A, B);                        \
-            }                                                           \
-            FAILm(#A " != " #B);                                        \
-        }                                                               \
-    } while (0)                                                         \
-        
 #define GREATEST_ASSERT_STR_EQm(MSG, EXP, GOT)                          \
     do {                                                                \
         const char *exp_s = (EXP);                                      \
@@ -300,12 +303,11 @@ void GREATEST_SET_TEARDOWN_CB(greatest_teardown_cb *cb, void *udata);
         greatest_info.msg = MSG;                                        \
         greatest_info.fail_file = __FILE__;                             \
         greatest_info.fail_line = __LINE__;                             \
-        greatest_info.assertions++;                                     \
         if (0 != strcmp(exp_s, got_s)) {                                \
             fprintf(GREATEST_STDOUT,                                    \
-                "Expected:\n####\n%s\n####\n", exp_s);                  \
+                "Expected:(%s)\n", exp_s);                  \
             fprintf(GREATEST_STDOUT,                                    \
-                "Got:\n####\n%s\n####\n", got_s);                       \
+                "Got:     (%s)\n", got_s);                       \
             return -1;                                                  \
         }                                                               \
         greatest_info.msg = NULL;                                       \
@@ -340,8 +342,12 @@ void GREATEST_SET_TEARDOWN_CB(greatest_teardown_cb *cb, void *udata);
     }
 
 #define GREATEST_CLOCK_DIFF(C1, C2)                                     \
+    fprintf(GREATEST_STDOUT, " (%.3f s)",                  \
+        (double)((C2) - (C1)) / (1.0 * (double)CLOCKS_PER_SEC))         \
+
+#define GREATEST_CLOCK_DIFF_ORIGINAL(C1, C2)                                     \
     fprintf(GREATEST_STDOUT, " (%lu ticks, %.3f sec)",                  \
-        (long unsigned int) (C2) - (long unsigned int)(C1),             \
+        (long unsigned int) (C2) - (C1),                                \
         (double)((C2) - (C1)) / (1.0 * (double)CLOCKS_PER_SEC))         \
 
 /* Include several function definitions in the main test file. */
@@ -369,6 +375,9 @@ int greatest_pre_test(const char *name) {                               \
         && (!GREATEST_FIRST_FAIL() || greatest_info.suite.failed == 0)  \
         && (greatest_info.test_filter == NULL ||                        \
             greatest_name_match(name, greatest_info.test_filter))) {    \
+        if (GREATEST_IS_VERBOSE()) {                                    \
+            fprintf(GREATEST_STDOUT, "TEST %30s ... ", name);             \
+        }                                                               \
         GREATEST_SET_TIME(greatest_info.suite.pre_test);                \
         if (greatest_info.setup) {                                      \
             greatest_info.setup(greatest_info.setup_udata);             \
@@ -409,10 +418,9 @@ void greatest_post_test(const char *name, int res) {                    \
 static void greatest_run_suite(greatest_suite_cb *suite_cb,             \
                                const char *suite_name) {                \
     if (greatest_info.suite_filter &&                                   \
-        !greatest_name_match(suite_name, greatest_info.suite_filter)) { \
+        !greatest_name_match(suite_name, greatest_info.suite_filter))   \
         return;                                                         \
-    }                                                                   \
-    if (GREATEST_FIRST_FAIL() && greatest_info.failed > 0) { return; }  \
+    if (GREATEST_FIRST_FAIL() && greatest_info.failed > 0) return;      \
     greatest_info.suite.tests_run = 0;                                  \
     greatest_info.suite.failed = 0;                                     \
     greatest_info.suite.passed = 0;                                     \
@@ -422,7 +430,7 @@ static void greatest_run_suite(greatest_suite_cb *suite_cb,             \
     greatest_info.suite.pre_test = 0;                                   \
     greatest_info.suite.post_test = 0;                                  \
     greatest_info.col = 0;                                              \
-    fprintf(GREATEST_STDOUT, "\n* Suite %s:\n", suite_name);            \
+    fprintf(GREATEST_STDOUT, "\n------------------------------------\nSuite %s\n------------------------------------\n", suite_name);            \
     GREATEST_SET_TIME(greatest_info.suite.pre_suite);                   \
     suite_cb();                                                         \
     GREATEST_SET_TIME(greatest_info.suite.post_suite);                  \
@@ -435,6 +443,8 @@ static void greatest_run_suite(greatest_suite_cb *suite_cb,             \
             greatest_info.suite.skipped);                               \
         GREATEST_CLOCK_DIFF(greatest_info.suite.pre_suite,              \
             greatest_info.suite.post_suite);                            \
+            if(greatest_info.suite.failed > 0 && greatest_info.failed_list_count<GREATEST_MAX_SUITE_ERRORS) {  \
+                strncpy(greatest_info.failed_list[greatest_info.failed_list_count++], suite_name, GREATEST_MAX_SUITE_NAME_LEN); } \
         fprintf(GREATEST_STDOUT, "\n");                                 \
     }                                                                   \
     greatest_info.setup = NULL;                                         \
@@ -449,8 +459,8 @@ static void greatest_run_suite(greatest_suite_cb *suite_cb,             \
                                                                         \
 void greatest_do_pass(const char *name) {                               \
     if (GREATEST_IS_VERBOSE()) {                                        \
-        fprintf(GREATEST_STDOUT, "PASS %s: %s",                         \
-            name, greatest_info.msg ? greatest_info.msg : "");          \
+        fprintf(GREATEST_STDOUT, "PASS %s ",                             \
+            greatest_info.msg ? greatest_info.msg : "");                \
     } else {                                                            \
         fprintf(GREATEST_STDOUT, ".");                                  \
     }                                                                   \
@@ -460,18 +470,16 @@ void greatest_do_pass(const char *name) {                               \
 void greatest_do_fail(const char *name) {                               \
     if (GREATEST_IS_VERBOSE()) {                                        \
         fprintf(GREATEST_STDOUT,                                        \
-            "FAIL %s: %s (%s:%u)",                                      \
+            "FAIL %s: %s (%s:%u)\n",                                      \
             name, greatest_info.msg ? greatest_info.msg : "",           \
             greatest_info.fail_file, greatest_info.fail_line);          \
     } else {                                                            \
         fprintf(GREATEST_STDOUT, "F");                                  \
-        greatest_info.col++;                                            \
         /* add linebreak if in line of '.'s */                          \
-        if (greatest_info.col != 0) {                                   \
+        if (greatest_info.col % greatest_info.width != 0)               \
             fprintf(GREATEST_STDOUT, "\n");                             \
-            greatest_info.col = 0;                                      \
-        }                                                               \
-        fprintf(GREATEST_STDOUT, "FAIL %s: %s (%s:%u)\n",               \
+        greatest_info.col = 0;                                          \
+        fprintf(GREATEST_STDOUT, "FAIL %s: %s (%s:%u) ",               \
             name,                                                       \
             greatest_info.msg ? greatest_info.msg : "",                 \
             greatest_info.fail_file, greatest_info.fail_line);          \
@@ -499,7 +507,10 @@ void greatest_usage(const char *name) {                                 \
         "  -f        Stop runner after first failure\n"                 \
         "  -v        Verbose output\n"                                  \
         "  -s SUITE  only run suite named SUITE\n"                      \
-        "  -t TEST   only run test named TEST\n",                       \
+        "  -t TEST   only run test named TEST\n"                       \
+        "  -j SERVER Jakarta server to hit prod/staging/qa DEFAULT: qa\n" \
+        "  -u USER   Jakarta user to use DEFAULT: kfry@gopro.com\n"         \
+        "  -p PASS   Jakarta password to use DEFAULT: [xxxxx]\n",         \
         name);                                                          \
 }                                                                       \
                                                                         \
@@ -515,6 +526,7 @@ void GREATEST_SET_TEARDOWN_CB(greatest_teardown_cb *cb,                 \
 }                                                                       \
                                                                         \
 greatest_run_info greatest_info
+
 
 /* Handle command-line arguments, etc. */
 #define GREATEST_MAIN_BEGIN()                                           \
@@ -539,6 +551,36 @@ greatest_run_info greatest_info
                 }                                                       \
                 greatest_info.suite_filter = argv[i+1];                 \
                 i++;                                                    \
+            } else if (0 == strcmp("-j", argv[i])) {                    \
+                if (argc <= i + 1) {                                    \
+                    greatest_usage(argv[0]);                            \
+                    exit(EXIT_FAILURE);                                 \
+                }                                                       \
+                if(strcmp(argv[i+1], "qa") == 0)                        \
+                    greatest_info.gopro_test_server = 0;                \
+                else if(strcmp(argv[i+1], "staging") == 0)             \
+                    greatest_info.gopro_test_server = 1;                \
+                else if(strcmp(argv[i+1], "prod") == 0)                \
+                    greatest_info.gopro_test_server = 2;                \
+                else {                                                  \
+                    greatest_usage(argv[0]);                            \
+                    exit(EXIT_FAILURE);                                 \
+                }                                                       \
+                i++;                                                    \
+            } else if (0 == strcmp("-u", argv[i])) {                    \
+                if (argc <= i + 1) {                                    \
+                    greatest_usage(argv[0]);                            \
+                    exit(EXIT_FAILURE);                                 \
+                }                                                       \
+                greatest_info.gopro_test_user = argv[i+1];              \
+                i++;                                                    \
+            } else if (0 == strcmp("-p", argv[i])) {                    \
+                if (argc <= i + 1) {                                    \
+                    greatest_usage(argv[0]);                            \
+                    exit(EXIT_FAILURE);                                 \
+                }                                                       \
+                greatest_info.gopro_test_pass = argv[i+1];              \
+                i++;                                                    \
             } else if (0 == strcmp("-f", argv[i])) {                    \
                 greatest_info.flags |= GREATEST_FLAG_FIRST_FAIL;        \
             } else if (0 == strcmp("-v", argv[i])) {                    \
@@ -560,18 +602,22 @@ greatest_run_info greatest_info
 
 #define GREATEST_MAIN_END()                                             \
     do {                                                                \
+        int i;                                                          \
         if (!GREATEST_LIST_ONLY()) {                                    \
             GREATEST_SET_TIME(greatest_info.end);                       \
             fprintf(GREATEST_STDOUT,                                    \
                 "\nTotal: %u tests", greatest_info.tests_run);          \
             GREATEST_CLOCK_DIFF(greatest_info.begin,                    \
                 greatest_info.end);                                     \
-            fprintf(GREATEST_STDOUT, ", %u assertions\n",               \
-                greatest_info.assertions);                              \
+            fprintf(GREATEST_STDOUT, "\n");                             \
             fprintf(GREATEST_STDOUT,                                    \
                 "Pass: %u, fail: %u, skip: %u.\n",                      \
                 greatest_info.passed,                                   \
                 greatest_info.failed, greatest_info.skipped);           \
+            for(i=0; i<greatest_info.failed_list_count; i++) {          \
+                fprintf(GREATEST_STDOUT,                                \
+                    "    FAIL SUITE: %s\n",                             \
+                    greatest_info.failed_list[i]); }                    \
         }                                                               \
         return (greatest_info.failed > 0                                \
             ? EXIT_FAILURE : EXIT_SUCCESS);                             \
