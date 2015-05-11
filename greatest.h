@@ -179,8 +179,8 @@ typedef struct greatest_run_info {
     unsigned int debug_level;
     unsigned int debug_level_mask;
     unsigned int debug_component_mask;
-    char *debug_filename;
-    char *debug_filemode;
+    const char *debug_filename;
+    const char *debug_filemode;
 
     /* overall timers */
     clock_t begin;
