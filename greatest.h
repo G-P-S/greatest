@@ -520,8 +520,9 @@ void greatest_usage(const char *name) {                                 \
         "  -u USER   Jakarta user to use DEFAULT: kfry@gopro.com\n"     \
         "  -p PASS   Jakarta password to use DEFAULT: [xxxxx]\n"        \
         "  -dmode   MODE  debug mode (stdout|stderr|file)\n"            \
-        "  -dmask   MASK  debug mode (stdout|stderr|file)\n"            \
-        "  -dcomp   COMP  debug component (bitfield)\n"                  \
+        "  -dlevel  LEVEL debug level\n"                                \
+        "  -dmask   MASK  debug level mask\n"                           \
+        "  -dcomp   COMP  debug component (bitfield)\n"                 \
         "  -dfile   FILE  debug filename\n"                             \
         "  -dappend FILE  debug filename (append to existing)\n",       \
         name);                                                          \
