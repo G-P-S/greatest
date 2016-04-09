@@ -384,7 +384,7 @@ int greatest_pre_test(const char *name) {                               \
         && (greatest_info.test_filter == NULL ||                        \
             greatest_name_match(name, greatest_info.test_filter))) {    \
         if (GREATEST_IS_VERBOSE()) {                                    \
-            fprintf(GREATEST_STDOUT, "TEST %30s ... ", name);           \
+            fprintf(GREATEST_STDOUT, "TEST %40s ... ", name);           \
         }                                                               \
         GREATEST_SET_TIME(greatest_info.suite.pre_test);                \
         if (greatest_info.setup) {                                      \
