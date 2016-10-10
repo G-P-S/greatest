@@ -478,8 +478,8 @@ void greatest_do_pass(const char *name) {                               \
 void greatest_do_fail(const char *name) {                               \
     if (GREATEST_IS_VERBOSE()) {                                        \
         fprintf(GREATEST_STDOUT,                                        \
-            "FAIL %s: %s (%s:%u)\n",                                    \
-            name, greatest_info.msg ? greatest_info.msg : "",           \
+            "FAIL %s (%s:%u)\n",                                    \
+            greatest_info.msg ? greatest_info.msg : "",           \
             greatest_info.fail_file, greatest_info.fail_line);          \
     } else {                                                            \
         fprintf(GREATEST_STDOUT, "F");                                  \
@@ -487,8 +487,7 @@ void greatest_do_fail(const char *name) {                               \
         if (greatest_info.col % greatest_info.width != 0)               \
             fprintf(GREATEST_STDOUT, "\n");                             \
         greatest_info.col = 0;                                          \
-        fprintf(GREATEST_STDOUT, "FAIL %s: %s (%s:%u) ",                \
-            name,                                                       \
+        fprintf(GREATEST_STDOUT, "FAIL %s (%s:%u) ",                \
             greatest_info.msg ? greatest_info.msg : "",                 \
             greatest_info.fail_file, greatest_info.fail_line);          \
     }                                                                   \
@@ -497,8 +496,7 @@ void greatest_do_fail(const char *name) {                               \
                                                                         \
 void greatest_do_skip(const char *name) {                               \
     if (GREATEST_IS_VERBOSE()) {                                        \
-        fprintf(GREATEST_STDOUT, "SKIP %s: %s",                         \
-            name,                                                       \
+        fprintf(GREATEST_STDOUT, "SKIP %s",                         \
             greatest_info.msg ?                                         \
             greatest_info.msg : "" );                                   \
     } else {                                                            \
